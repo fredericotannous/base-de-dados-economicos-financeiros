@@ -1,0 +1,69 @@
+install.packages("XML")
+install.packages("plyr")
+library(XML)
+library(plyr)
+
+dt = as.Date("2018-07-20")
+ler_bmf_bvbg = function(dt){
+  stopifnot(is(dt, "Date"), length(dt) == 1)
+  url = format(dt, "ftp://ftp.bmf.com.br/IPN/TRS/BVBG.086.01/PR%y%m%d.zip")
+  
+  filename = format(dt, "Downloads/PR%y%m%d.zip")
+  
+  download.file(url = url, destfile = filename)
+  
+  files = unzip(filename, exdir = "Downloads")
+  last_file = max(files)
+  
+  xml = xmlParse(last_file)
+  file.remove(files)
+  
+  root =  xmlRoot(xml) #achar node raiz
+  BizFileHdr = xmlChildren(root)[[1]]
+  Xchg = xmlChildren(BizFileHdr)[[1]]
+  BizGrps = xmlElementsByTagName(Xchg, "BizGrp", recursive = FALSE)
+  
+  
+  from_node_to_dataframe = function(b){
+    #lendo node
+    doc = xmlElementsByTagName(b, "Document", recursive = FALSE)[[1]]
+    PricRpt = xmlChildren(doc)[[1]]
+    TckrSymb = xmlValue(xmlElementsByTagName(PricRpt, "TckrSymb", recursive = TRUE))[[1]]
+    FinInstrmAttrbts = xmlElementsByTagName(PricRpt, "FinInstrmAttrbts", recursive = FALSE)[[1]]
+    
+    #criando dataframe de saída
+    df = as.data.frame(t(getChildrenStrings(FinInstrmAttrbts)), stringsAsFactors = FALSE)
+    df$TckrSymb = TckrSymb
+    return(df) 
+  }
+  
+  # #criar o dataframe principal
+  # dados = data.frame()
+  # # passar por todos os bizgrps
+  # for(i in 1: length(BizGrps)){
+  #   #para cada um: criar um df 
+  #   b  =BizGrps[[i]]
+  #   df = from_node_to_dataframe(b)
+  #   #juntar com o df principal
+  #   dados = rbind.fill(dados, df)
+  # }
+  
+  dados = ldply(.data = BizGrps, .fun = from_node_to_dataframe)
+  dados[, ".id"] = NULL
+  
+  non_numerics = c("TckrSymb", "MktDataStrmId", "AdjustQtStin", "PrvsAdjustQtStin")  
+  numerics = colnames(dados)[!colnames(dados)  %in% non_numerics]
+  
+  for(col in numerics){
+    dados[,col] = as.numeric(dados[,col])
+  }
+  
+  return(dados)  
+
+}
+  
+  
+  
+  
+  
+
